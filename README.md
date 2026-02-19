@@ -7,7 +7,7 @@
 ## Tech Stack
 - FastAPI
 - Streamlit
-- PostgreSQL + pgvector
+- SQLite
 - GPT-4o (설명 생성)
 - Docker
 
