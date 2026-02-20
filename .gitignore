@@ -23,6 +23,7 @@ ENV/
 # Database
 *.db
 *.sqlite3
+data/*.sqlite3 
 
 # Alembic
 *.pyc
