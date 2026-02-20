@@ -78,13 +78,31 @@
 
 ## 🏗 System Architecture
 
-\[Data Crawling\] ↓ \[Raw Storage\] ↓ \[Data Cleaning / Structuring\] ↓
-\[Matching & Scoring Engine\] ↓ \[FastAPI\] ↓ \[Streamlit UI\]
+```text
+[Data Crawling]
+        ↓
+[Raw Storage]
+        ↓
+[Data Cleaning / Structuring]
+        ↓
+[Matching & Scoring Engine]
+        ↓
+[FastAPI]
+        ↓
+[Streamlit UI]
+```
 
 ### AI Flow (RAG)
 
-User Question ↓ Vector Search ↓ Top-K Context Retrieval ↓ GPT-4o
-Response Generation
+```text
+User Question
+        ↓
+Vector Search
+        ↓
+Top-K Context Retrieval
+        ↓
+GPT-4o Response Generation
+```
 
 ------------------------------------------------------------------------
 
