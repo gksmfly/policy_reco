@@ -167,7 +167,8 @@ pip install -r requirements.txt
 
 `.env` 파일 생성
 
-    OPENAI_API_KEY=your_key_here
+    OPENAI_API_KEY=your_key_here 
+    DATABASE_URL=sqlite:///./policy.sqlite3
 
 ### 5️⃣ Run Backend
 
