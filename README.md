@@ -89,13 +89,40 @@ Response Generation
 ------------------------------------------------------------------------
 
 ## 📂 Project Structure
-
+```text
 backend/ │ ├── app/ │ ├── main.py │ ├── routers/ │ │ ├── recommend.py │
 │ ├── policies.py │ │ ├── policy_qa.py │ │ └── similar.py │ │ │ ├──
 services/ │ ├── models/ │ └── core/ │ frontend/ │ ├── Home.py ├── pages/
 │ ├── Recommend.py │ ├── Policy_Search.py │ ├── Policy_QA.py │ └──
 Similar.py
+```
 
+
+## 📂 Project Structure
+
+```text
+backend/
+│
+├── app/
+│   ├── main.py
+│   ├── routers/
+│   │   ├── recommend.py
+│   │   ├── policies.py
+│   │   ├── policy_qa.py
+│   │   └── similar.py
+│   │
+│   ├── services/
+│   ├── models/
+│   └── core/
+│
+frontend/
+│
+├── Home.py
+├── pages/
+│   ├── Recommend.py
+│   ├── Policy_Search.py
+│   ├── Policy_QA.py
+│   └── Similar.py
 ------------------------------------------------------------------------
 
 ## 📡 API Endpoints
