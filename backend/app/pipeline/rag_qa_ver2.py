@@ -122,3 +122,36 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# === FastAPI에서 쓸 함수 ===
+
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
+def load_rag_engine():
+    """
+    서버 시작 시 1회만 CSV 로드 + 인덱스 생성
+    """
+    import pandas as pd
+    from llama_index.core import VectorStoreIndex, Document
+    from llama_index.llms.openai import OpenAI
+
+    df = pd.read_csv("pipeline/cleaner/policies.csv")
+
+    documents = []
+    for _, row in df.iterrows():
+        text = row.get("clean_text", "")
+        if not text:
+            continue
+        documents.append(Document(text=text))
+
+    index = VectorStoreIndex.from_documents(documents)
+    query_engine = index.as_query_engine(llm=OpenAI(model="gpt-4o"))
+
+    return query_engine
+
+
+def ask_policy_question(question: str) -> str:
+    engine = load_rag_engine()
+    response = engine.query(question)
+    return str(response)

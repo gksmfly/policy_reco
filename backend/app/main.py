@@ -15,7 +15,6 @@ app.include_router(recommend.router)
 app.include_router(policy_qa.router)
 app.include_router(similar.router)
 
-
 # Optional: root endpoint
 @app.get("/")
 def root():
