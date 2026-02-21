@@ -1,8 +1,8 @@
-from typing import Dict
+from app.pipeline.rag_qa_ver2 import ask_policy_question
 
-def qa_flow(question: str) -> Dict:
-    # TODO: connect LlamaIndex retrieval + LLM
+
+def run_policy_qa(question: str):
+    answer = ask_policy_question(question)
     return {
-        "answer": "샘플 답변입니다.",
-        "sources": []
+        "answer": answer
     }
