@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-
 from __future__ import annotations
 
 import argparse
 import importlib
-import json
 import logging
 import os
 import re
@@ -12,6 +10,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple, List
 
 import pandas as pd
+
+import sys
+HERE = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 
 # -------------------------
@@ -34,7 +38,7 @@ def setup_logger(verbose: bool = False) -> logging.Logger:
 # missing / text utils
 # -------------------------
 def _is_missing(v: Any) -> bool:
-    """결측 판단: None, pandas NA/NaN, 빈 문자열, 'nan', (혹시 남아있을) '__MISSING__'"""
+    """결측 판단: None, pandas NA/NaN, 빈 문자열, 'nan', '__MISSING__'"""
     if v is None:
         return True
     try:
@@ -48,7 +52,7 @@ def _is_missing(v: Any) -> bool:
             return True
         if s.lower() == "nan":
             return True
-        if s == "__MISSING__":  # 과거 데이터 방어
+        if s == "__MISSING__":
             return True
     return False
 
@@ -59,7 +63,6 @@ def _to_text(v: Any) -> str:
         return ""
     s = str(v)
     s = s.replace("\r\n", "\n").replace("\r", "\n").strip()
-    # 가벼운 공백 정리(줄바꿈은 유지)
     if "\n" in s:
         s = "\n".join([" ".join(line.split()) for line in s.split("\n")]).strip()
     else:
@@ -72,8 +75,8 @@ def _to_text(v: Any) -> str:
 # -------------------------
 def validate_input_contract(df: pd.DataFrame) -> None:
     """
-    [무조건 계약 준수]
-    - policy_id 컬럼 존재 + 값 비어있으면 안됨 + 중복 불가
+    입력 최소 계약:
+    - policy_id 컬럼 존재 + 값 비어있으면 안됨 (중복 허용: 출력에서 재번호 부여하므로)
     - eligibility 컬럼 존재 + 값 비어있으면 안됨
     """
     required_cols = ["policy_id", "eligibility"]
@@ -84,9 +87,6 @@ def validate_input_contract(df: pd.DataFrame) -> None:
     pid = df["policy_id"].astype(str).str.strip()
     if (pid == "").any():
         raise ValueError("Schema violation: policy_id contains empty values")
-    if pid.duplicated(keep=False).any():
-        top = pid[pid.duplicated(keep=False)].value_counts().head(10).to_dict()
-        raise ValueError(f"Schema violation: duplicated policy_id exists (top10): {top}")
 
     elig = df["eligibility"].astype(str).str.strip()
     if (elig == "").any():
@@ -138,7 +138,6 @@ def safe_import_build_clean_text(logger: logging.Logger):
     except Exception as e1:
         logger.warning(f"build_clean_text package import failed: {e1}")
 
-    # direct load next to this file
     try:
         here = os.path.dirname(os.path.abspath(__file__))
         module_path = os.path.join(here, "build_clean_text.py")
@@ -227,34 +226,31 @@ def normalize_income_to_contract(income_obj: Any, logger: logging.Logger) -> Tup
     계약 enum: NONE | AMOUNT | MEDIAN_RATIO
     계약 income_threshold: 원 단위, 연소득 기준 (AMOUNT일 때만 채움)
 
-    우선순위(계약 맞춤):
-    1) 중위소득% 조건이 있으면 -> MEDIAN_RATIO, threshold = None
-    2) 연소득 상한이 있으면 -> AMOUNT, threshold = 연소득(원)
-    3) 월소득 상한이 있으면 -> AMOUNT, threshold = 월소득(원) * 12
+    우선순위:
+    1) 중위소득% 조건 -> MEDIAN_RATIO, threshold=None
+    2) 연소득 상한 -> AMOUNT, threshold=연소득(원)
+    3) 월소득 상한 -> AMOUNT, threshold=월소득(원)*12
     4) 그 외 -> NONE
     """
     cs = _constraints(income_obj)
     types = {c.get("type") for c in cs}
 
-    # 1) median ratio
     if "median_percent_max" in types or "median_percent_min" in types:
         return "MEDIAN_RATIO", None
 
-    # 2) annual max (choose tightest)
     annual = pick_min_of_type(income_obj, ("annual_max_won",))
     if annual is not None:
         return "AMOUNT", int(annual)
 
-    # 3) monthly max -> annualize
     monthly = pick_min_of_type(income_obj, ("monthly_max_won",))
     if monthly is not None:
-        # 계약: 연소득 기준 고정
         return "AMOUNT", int(monthly) * 12
 
-    # (참고) min bound만 있는 경우(rare): 계약에 맞추기 애매하므로 NONE 처리
     if "annual_min_won" in types or "monthly_min_won" in types:
-        logger.warning("income has only MIN-type constraints (annual_min_won/monthly_min_won). "
-                       "Contract supports threshold as eligibility upper bound; set income_rule_type=NONE.")
+        logger.warning(
+            "income has only MIN-type constraints (annual_min_won/monthly_min_won). "
+            "Contract supports threshold as eligibility upper bound; set income_rule_type=NONE."
+        )
         return "NONE", None
 
     return "NONE", None
@@ -262,10 +258,8 @@ def normalize_income_to_contract(income_obj: Any, logger: logging.Logger) -> Tup
 
 def infer_is_homeowner_required(text: str) -> bool:
     """
-    계약 필드명은 is_homeowner_required지만,
-    실제 의미는 '주택 소유자여야 함'보다는 정책에서 '무주택'을 요구하는 경우가 많음.
-    여기서는 텍스트에 '무주택/주택 미소유'가 있으면 True로 둔다.
-    (팀이 의미를 '무주택 required'로 쓰는지 확정 필요. 계약을 바꾸지 못한다면, 이 로직이 표준이 됨.)
+    계약 필드명은 is_homeowner_required지만 실제로는 무주택 요구를 넣는 경우가 많아
+    텍스트에 '무주택/주택 미소유' 등이 있으면 True.
     """
     t = text or ""
     return bool(re.search(r"(무주택|주택\s*미소유|주택\s*소유\s*불가|자가\s*없)", t))
@@ -275,31 +269,25 @@ def infer_is_homeowner_required(text: str) -> bool:
 # policies field mapping (input -> contract)
 # -------------------------
 def build_support_summary(row: Dict[str, Any]) -> str:
-    # 계약: support_summary(짧은 요약)
-    # 입력이 summary/support_summary 둘 중 하나일 수 있으니 fallback 처리
     v = _to_text(row.get("support_summary"))
     if v:
         return v
     v = _to_text(row.get("summary"))
     if v:
         return v
-    # 최후: benefit/eligibility 일부로 생성
     elig = _to_text(row.get("eligibility"))
     ben = _to_text(row.get("benefit"))
     base = " / ".join([x for x in [elig[:80], ben[:80]] if x])
-    return base[:200]  # 짧게 제한
+    return base[:200]
 
 
 def build_support_detail(row: Dict[str, Any]) -> str:
-    # 계약: support_detail(상세)
     v = _to_text(row.get("support_detail"))
     if v:
         return v
-    # raw_text가 있으면 raw_text 우선
     raw = _to_text(row.get("raw_text"))
     if raw:
         return raw
-    # 최후: 구조화 필드 합성
     parts: List[str] = []
     for k in ("eligibility", "benefit", "apply_process", "apply_period"):
         txt = _to_text(row.get(k))
@@ -323,22 +311,21 @@ def run_clean(input_csv: str, limit: Optional[int] = None, verbose: bool = False
     parse_age, parse_income, parse_assets, parse_car = safe_import_rules(logger)
     build_clean_text = safe_import_build_clean_text(logger)
 
-    # output rows
     policies_rows: List[Dict[str, Any]] = []
     elig_rows: List[Dict[str, Any]] = []
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    for _, r in df.iterrows():
-        row = r.to_dict()
+    # ✅ 출력 policy_id: 입력의 policy_id와 무관하게 1..N 재번호
+    for new_id, r in enumerate(df.itertuples(index=False), start=1):
+        row = r._asdict()
 
-        policy_id = _to_text(row.get("policy_id"))
-        # policy_name 계약 필수: 없으면 에러
+        policy_id = int(new_id)  # <- 핵심 변경
+
         policy_name = _to_text(row.get("policy_name"))
         if not policy_name:
-            raise ValueError(f"Schema violation: policy_name is required for policies (policy_id={policy_id})")
+            raise ValueError(f"Schema violation: policy_name is required for policies (row_new_id={policy_id})")
 
-        # rules input text (결측 제외)
         chunks = [
             _to_text(row.get("eligibility")),
             _to_text(row.get("benefit")),
@@ -356,51 +343,42 @@ def run_clean(input_csv: str, limit: Optional[int] = None, verbose: bool = False
         min_age, max_age = pick_age_min_max(age_obj)
         income_rule_type, income_threshold = normalize_income_to_contract(income_obj, logger)
 
-        # 계약: asset_threshold, vehicle_value_limit은 단일 원 값 (없으면 null)
-        # parse_assets: {"type":"max_won","value":...} 같은 형태를 기대
         asset_threshold = pick_min_of_type(assets_obj, ("max_won", "asset_max_won", "assets_max_won"))
-        # parse_car: {"type":"value_max_won","value":...} 또는 {"type":"max_won","value":...} 가능
         vehicle_value_limit = pick_min_of_type(car_obj, ("value_max_won", "car_value_max_won", "max_won"))
 
         is_homeowner_required = bool(infer_is_homeowner_required(text_for_rules))
 
-        # clean_text 생성(결측은 제외된 상태로 builder가 처리해야 함)
-        # build_clean_text는 row dict를 받으므로, 계약명 컬럼도 함께 넣어주는게 안전
-        # (builder가 summary를 쓰는 경우를 위해 summary/support_summary 모두 노출)
         row_for_clean = dict(row)
         row_for_clean["support_summary"] = build_support_summary(row)
         row_for_clean["support_detail"] = build_support_detail(row)
         clean_text = build_clean_text(row_for_clean)
 
-        # region (nullable)
         region = row.get("region", pd.NA)
         if _is_missing(region):
             region = pd.NA
         else:
             region = _to_text(region)
 
-        # policies (2.2) row
         policies_rows.append(
             {
                 "policy_id": policy_id,
                 "policy_name": policy_name,
                 "support_summary": build_support_summary(row),
                 "support_detail": build_support_detail(row),
-                "region": region,  # nullable
+                "region": region,
                 "clean_text": clean_text,
                 "updated_at": now_iso,
             }
         )
 
-        # policy_eligibility (2.3) row
         elig_rows.append(
             {
                 "policy_id": policy_id,
                 "min_age": min_age,
                 "max_age": max_age,
-                "income_rule_type": income_rule_type,        # NONE/AMOUNT/MEDIAN_RATIO
-                "income_threshold": income_threshold,        # AMOUNT일 때만 값(연소득 원)
-                "asset_threshold": asset_threshold,          # 원
+                "income_rule_type": income_rule_type,  # NONE/AMOUNT/MEDIAN_RATIO
+                "income_threshold": income_threshold,  # AMOUNT일 때만 값(연소득 원)
+                "asset_threshold": asset_threshold,  # 원
                 "is_homeowner_required": bool(is_homeowner_required),
                 "vehicle_value_limit": vehicle_value_limit,  # 원
             }
@@ -409,12 +387,10 @@ def run_clean(input_csv: str, limit: Optional[int] = None, verbose: bool = False
     policies_df = pd.DataFrame(policies_rows)
     elig_df = pd.DataFrame(elig_rows)
 
-    # output path (always cleaner dir)
     cleaner_dir = os.path.dirname(os.path.abspath(__file__))
     policies_out = os.path.join(cleaner_dir, "policies.csv")
     elig_out = os.path.join(cleaner_dir, "policy_eligibility.csv")
 
-    # 계약 컬럼 순서 강제
     policies_cols = [
         "policy_id",
         "policy_name",
@@ -437,12 +413,14 @@ def run_clean(input_csv: str, limit: Optional[int] = None, verbose: bool = False
     policies_df = policies_df[policies_cols]
     elig_df = elig_df[elig_cols]
 
-    # income_rule_type 유효성 최종 체크(fail-fast)
     allowed = {"NONE", "AMOUNT", "MEDIAN_RATIO"}
-    bad = set(policies_df.columns)  # dummy to quiet linters
     bad = set(elig_df["income_rule_type"].dropna().astype(str)) - allowed
     if bad:
         raise ValueError(f"Contract violation: invalid income_rule_type values found: {sorted(list(bad))}")
+
+    # policy_id 중복 방지 (새로 부여했으니 여기서 중복이면 로직 오류)
+    if policies_df["policy_id"].duplicated().any():
+        raise ValueError("Internal error: duplicated policy_id after renumbering")
 
     try:
         policies_df.to_csv(policies_out, index=False, encoding="utf-8-sig")
