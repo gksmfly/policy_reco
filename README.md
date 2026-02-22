@@ -46,52 +46,84 @@
 ## 📂 Project Structure (현재 리포 구조 기준)
 
 ```
-policy_reco/
-├─ backend/
-│  └─ app/
-│     ├─ main.py
-│     ├─ core/
-│     │  └─ data_manager.py
-│     ├─ routers/
-│     │  ├─ policies.py
-│     │  ├─ recommend.py
-│     │  ├─ policy_qa.py
-│     │  └─ similar.py
-│     ├─ services/
-│     │  └─ orchestration/
-│     │     ├─ recommend_flow.py
-│     │     ├─ qa_flow.py
-│     │     └─ similar_flow.py
-│     ├─ pipeline/
-│     │  ├─ rag_filter_ver3.py
-│     │  └─ rag_qa_ver2.py
-│     └─ schemas/
-│        ├─ common.py
-│        ├─ recommend.py
-│        └─ qa.py
-│
-├─ frontend/
-│  ├─ Home.py
-│  ├─ clients/
-│  │  └─ api_client.py
-│  ├─ components/
-│  │  ├─ cards.py
-│  │  ├─ forms.py
-│  │  └─ layout.py
-│  └─ pages/
-│     ├─ Recommend.py
-│     ├─ Policy_Search.py
-│     ├─ Policy_QA.py
-│     └─ Similar.py
-│
-├─ pipeline/
-│  └─ cleaner/
-│     ├─ policies.csv
-│     ├─ policy_eligibility.csv
-│     └─ rules/...
-│
-├─ data_collection/        # 크롤러/수집 관련(별도 오너 영역)
-└─ scripts/
+policy_reco ├── backend
+│   └── app
+│       ├── core
+│       │   └── data_manager.py
+│       ├── pipeline
+│       │   ├── rag_filter_ver3.py
+│       │   └── rag_qa_ver2.py
+│       ├── routers
+│       │   ├── __init__.py
+│       │   ├── policies.py
+│       │   ├── policy_qa.py
+│       │   ├── recommend.py
+│       │   └── similar.py
+│       ├── schemas
+│       │   ├── common.py
+│       │   ├── qa.py
+│       │   └── recommend.py
+│       ├── services
+│       │   └── orchestration
+│       │       ├── qa_flow.py
+│       │       ├── recommend_flow.py
+│       │       └── similar_flow.py
+│       └── main.py
+│ 
+├── data_collection
+│   ├── data_crawler
+│   │   ├── api.ipynb
+│   │   ├── api_data.csv
+│   │   ├── crawling.ipynb
+│   │   ├── filtered_api_data.csv
+│   │   └── link_parsed.csv
+│   ├── data_merge
+│   │   ├── merge.ipynb
+│   │   └── merged_policies.csv
+│   ├── parsing
+│   │   ├── detail_parsing.csv
+│   │   ├── parser.ipynb
+│   │   └── parser.py
+│   ├── reference
+│   │   └── (파일명 인코딩이 깨진 .doc 1개 존재)
+│   ├── result
+│   │   └── policies.csv
+│   └── storage
+│       ├── ingest_raw_policies.py
+│       └── raw_store.py
+├── frontend
+│   ├── clients
+│   │   └── api_client.py
+│   ├── components
+│   │   ├── cards.py
+│   │   ├── forms.py
+│   │   └── layout.py
+│   ├── pages
+│   │   ├── __init__.py
+│   │   ├── Policy_QA.py
+│   │   ├── Policy_Search.py
+│   │   ├── Recommend.py
+│   │   └── Similar.py
+│   └── Home.py
+├── pipeline
+│   └── cleaner
+│       ├── rules
+│       │   ├── __init__.py
+│       │   ├── parse_age.py
+│       │   ├── parse_assets.py
+│       │   ├── parse_car.py
+│       │   ├── parse_income.py
+│       │   └── utils.py
+│       ├── __init__.py
+│       ├── build_clean_text.py
+│       ├── policies.csv
+│       ├── policy_eligibility.csv
+│       └── run_clean.py
+├── scripts
+│   ├── seed_sample_data.py
+│   └── smoke_test.sh
+├── README.md
+└── requirements.txt
 ```
 
 ---
