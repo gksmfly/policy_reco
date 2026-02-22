@@ -46,7 +46,8 @@
 ## 📂 Project Structure (현재 리포 구조 기준)
 
 ```
-policy_reco ├── backend
+policy_reco
+├── backend
 │   └── app
 │       ├── core
 │       │   └── data_manager.py
