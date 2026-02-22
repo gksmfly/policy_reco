@@ -1,1 +1,0 @@
-print('Seed script placeholder')

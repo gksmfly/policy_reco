@@ -29,14 +29,17 @@ def similar_flow(policy_input: str, top_k: int = 5) -> List[Dict]:
     df["policy_id"] = df["policy_id"].astype(int)
 
     # -----------------------------
-    # 입력 처리
+    # 입력 처리 (ID 또는 정책명)
     # -----------------------------
+    policy_input = policy_input.strip()
+
     if policy_input.isdigit():
         target_id = int(policy_input)
         if target_id not in df["policy_id"].tolist():
             return []
     else:
-        match = df[df["policy_name"] == policy_input]
+        # 🔥 부분 일치 허용 (contains)
+        match = df[df["policy_name"].str.contains(policy_input, na=False)]
         if match.empty:
             return []
         target_id = int(match.iloc[0]["policy_id"])
@@ -63,7 +66,7 @@ def similar_flow(policy_input: str, top_k: int = 5) -> List[Dict]:
     target_idx = ids.index(target_id)
     sims = cosine_similarity(X[target_idx], X).flatten()
 
-    # 🔥 NaN / inf 제거
+    # 🔥 NaN / inf 제거 (JSON 에러 방지)
     sims = np.nan_to_num(sims, nan=0.0, posinf=0.0, neginf=0.0)
 
     ranked_idx = np.argsort(-sims)
@@ -77,13 +80,16 @@ def similar_flow(policy_input: str, top_k: int = 5) -> List[Dict]:
 
         r = records[idx]
 
+        # 🔥 detail은 clean_text 우선 사용
+        detail_text = r.get("clean_text") or r.get("support_detail")
+
         out.append(
             {
                 "policy_id": str(pid),
                 "policy_name": _safe_value(r.get("policy_name")),
                 "similarity_score": float(_safe_value(sims[idx])),
                 "summary": _safe_value(r.get("support_summary")),
-                "detail": _safe_value(r.get("support_detail")),
+                "detail": _safe_value(detail_text),
                 "region": _safe_value(r.get("region")),
             }
         )
