@@ -1,7 +1,6 @@
 import streamlit as st
 
 # Proxy page modules
-from pages.Recommend import render as render_recommend
 from pages.Policy_Search import render as render_policy_search
 from pages.Policy_QA import render as render_policy_qa
 from pages.Similar import render as render_similar
@@ -139,7 +138,6 @@ st.markdown("""
 
 # ---------------------- NAVIGATION ----------------------
 tabs = st.tabs([
-    "Recommend",
     "Policy List",
     "Policy Q&A",
     "Similar"
@@ -149,16 +147,12 @@ tabs = st.tabs([
 # ---------------------- TAB CONTENT ----------------------
 
 with tabs[0]:
-    render_recommend()
-
-
-with tabs[1]:
     render_policy_search()
 
 
-with tabs[2]:
+with tabs[1]:
     render_policy_qa()
 
 
-with tabs[3]:
+with tabs[2]:
     render_similar()

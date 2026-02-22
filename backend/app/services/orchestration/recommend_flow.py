@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List
+import os
 import pandas as pd
 
 from backend.app.core.data_manager import get_dataframes, get_csv_paths
@@ -22,6 +23,28 @@ def _safe(value):
     return value
 
 
+def _resolve_eligibility_path() -> str:
+    """
+    1) .env 의 POLICY_ELIGIBILITY_CSV_PATH 우선 사용
+    2) 없으면 get_csv_paths()[1] 사용
+    3) 상대경로면 프로젝트 루트 기준 절대경로로 변환
+    """
+    env_path = os.getenv("POLICY_ELIGIBILITY_CSV_PATH")
+
+    if env_path:
+        path = env_path
+    else:
+        path = get_csv_paths()[1]
+
+    # 절대경로 변환
+    if not os.path.isabs(path):
+        base_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../../../../")
+        )
+        path = os.path.join(base_dir, path)
+
+    return path
+
 def recommend_flow(profile: Dict[str, Any], top_k: int = 5) -> List[Dict[str, Any]]:
     """
     CSV 기반 추천:
@@ -38,9 +61,12 @@ def recommend_flow(profile: Dict[str, Any], top_k: int = 5) -> List[Dict[str, An
     assets = profile.get("assets")
     is_homeless = profile.get("is_homeless")
 
+    # ===== eligibility CSV 경로 결정 =====
+    eligibility_path = _resolve_eligibility_path()
+
     # ===== 하드 필터 실행 =====
     result = filter_policies_from_csv(
-        get_csv_paths()[1],
+        eligibility_path,
         age=age,
         annual_income=int(annual_income) if annual_income not in (None, "") else None,
         assets=int(assets) if assets not in (None, "") else None,
@@ -82,7 +108,6 @@ def recommend_flow(profile: Dict[str, Any], top_k: int = 5) -> List[Dict[str, An
         # 점수 계산
         score = float(80 + 5 * len(matched) - 2 * len(skipped))
 
-        # 혹시라도 NaN 방어
         if pd.isna(score):
             score = 0.0
 

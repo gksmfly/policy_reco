@@ -25,24 +25,35 @@ class UserProfile:
 def read_csv_with_fallback(path: str) -> pd.DataFrame:
     """
     - 인코딩: utf-8/utf-8-sig/cp949/euc-kr 순서로 시도
-    - 구분자: 탭(TSV) 먼저, 그 다음 콤마(CSV) 시도
+    - 구분자: 콤마(CSV) 먼저, 그 다음 탭(TSV) 시도
+    - "컬럼 1개로 잘못 읽힌" 케이스 자동 감지 후 재시도
     """
     encodings = ["utf-8", "utf-8-sig", "cp949", "euc-kr"]
-    seps = ["\t", ","]
+    seps = [",", "\t"]  # ✅ CSV(콤마) 우선
 
     last_err: Exception | None = None
+
     for enc in encodings:
         for sep in seps:
             try:
                 df = pd.read_csv(path, encoding=enc, sep=sep)
-                # 잘못 읽힌 경우(컬럼 1개 + 헤더에 탭 포함) 방지
-                if len(df.columns) == 1 and ("\t" in str(df.columns[0])):
-                    continue
 
                 # 컬럼명 정리
                 df.columns = df.columns.astype(str).str.strip()
-                print(f"[INFO] Loaded CSV with encoding={enc}, sep={repr(sep)}")
+
+                # ✅ 잘못 읽힌 경우 감지:
+                # - 컬럼이 1개인데, 컬럼명에 ',' 또는 '\t'가 섞여 있으면 구분자 잘못 선택
+                if len(df.columns) == 1:
+                    col0 = str(df.columns[0])
+                    if ("," in col0) or ("\t" in col0):
+                        # 지금 sep가 잘못된 것 → 다음 후보로 계속
+                        continue
+
+                # (선택) 정보 로그: 너무 시끄러우면 주석 처리해도 됨
+                # print(f"[INFO] Loaded CSV with encoding={enc}, sep={repr(sep)} cols={len(df.columns)}")
+
                 return df
+
             except Exception as e:
                 last_err = e
                 continue
@@ -109,7 +120,7 @@ def check_eligibility(
       - income_rule_type ('AMOUNT'/'MEDIAN_RATIO'/'NONE')
       - income_threshold (annual 기준, 원)
       - asset_threshold (원)
-      - is_homeowner_required (TRUE/FALSE)
+      - is_homeowner_required (TRUE/FALSE)  # 실제 의미는 "무주택 필수"처럼 쓰고 있음
       - vehicle_value_limit (원)
     """
     passed: list[str] = []
@@ -148,13 +159,12 @@ def check_eligibility(
         skipped.append("무주택 조건 없음")
 
     # ---- Income ----
-    income_rule_type = (policy_row.get("income_rule_type") or "NONE").strip().upper()
+    income_rule_type = str(policy_row.get("income_rule_type") or "NONE").strip().upper()
     income_threshold = _to_int_or_none(policy_row.get("income_threshold"))
 
     if income_rule_type == "NONE":
         skipped.append("소득 조건 없음")
     elif income_rule_type == "MEDIAN_RATIO":
-        # 현재 입력(annual_income)만으로는 중위소득% 비교 불가 → MVP에서는 보류 처리
         skipped.append("중위소득(%) 조건: 비교 불가 → 보류")
     elif income_rule_type == "AMOUNT":
         if income_threshold is None:
@@ -163,13 +173,9 @@ def check_eligibility(
             if user.annual_income is None:
                 failed.append("연소득 정보 없음(정책은 소득 상한 존재)")
             elif user.annual_income > income_threshold:
-                failed.append(
-                    f"소득 미충족: {user.annual_income:,}원 > 기준 {income_threshold:,}원"
-                )
+                failed.append(f"소득 미충족: {user.annual_income:,}원 > 기준 {income_threshold:,}원")
             else:
-                passed.append(
-                    f"소득 충족: {user.annual_income:,}원 ≤ {income_threshold:,}원"
-                )
+                passed.append(f"소득 충족: {user.annual_income:,}원 ≤ {income_threshold:,}원")
     else:
         skipped.append(f"소득 조건 타입 미인식({income_rule_type}) → 보류")
 
@@ -181,13 +187,9 @@ def check_eligibility(
         if user.assets is None:
             failed.append("자산 정보 없음(정책은 자산 상한 존재)")
         elif user.assets > asset_threshold:
-            failed.append(
-                f"자산 미충족: {user.assets:,}원 > 기준 {asset_threshold:,}원"
-            )
+            failed.append(f"자산 미충족: {user.assets:,}원 > 기준 {asset_threshold:,}원")
         else:
-            passed.append(
-                f"자산 충족: {user.assets:,}원 ≤ {asset_threshold:,}원"
-            )
+            passed.append(f"자산 충족: {user.assets:,}원 ≤ {asset_threshold:,}원")
 
     # ---- Vehicle ----
     vehicle_limit = _to_int_or_none(policy_row.get("vehicle_value_limit"))
@@ -197,13 +199,9 @@ def check_eligibility(
         if user.vehicle_value is None:
             failed.append("차량가액 정보 없음(정책은 차량 상한 존재)")
         elif user.vehicle_value > vehicle_limit:
-            failed.append(
-                f"차량가액 미충족: {user.vehicle_value:,}원 > 기준 {vehicle_limit:,}원"
-            )
+            failed.append(f"차량가액 미충족: {user.vehicle_value:,}원 > 기준 {vehicle_limit:,}원")
         else:
-            passed.append(
-                f"차량가액 충족: {user.vehicle_value:,}원 ≤ {vehicle_limit:,}원"
-            )
+            passed.append(f"차량가액 충족: {user.vehicle_value:,}원 ≤ {vehicle_limit:,}원")
 
     eligible = len(failed) == 0
     return eligible, {"passed": passed, "failed": failed, "skipped": skipped}
@@ -237,9 +235,18 @@ def filter_policies_from_csv(
         "is_homeowner_required",
         "vehicle_value_limit",
     }
+
+    # ✅ 혹시 헤더가 BOM/공백 등으로 살짝 어긋나는 케이스 보정
+    df.columns = df.columns.astype(str).str.strip()
+
     missing = required_cols - set(df.columns)
     if missing:
-        raise ValueError(f"policy_eligibility.csv에 필요한 컬럼이 없습니다: {sorted(missing)}")
+        # 디버깅에 도움 되도록 현재 컬럼 일부도 같이 노출
+        cols_preview = df.columns.tolist()[:20]
+        raise ValueError(
+            f"policy_eligibility.csv에 필요한 컬럼이 없습니다: {sorted(missing)} / "
+            f"현재 컬럼 예시: {cols_preview}"
+        )
 
     user = UserProfile(
         age=age,
@@ -264,11 +271,9 @@ def filter_policies_from_csv(
             failed_policies.append(item)
 
     return {
-        # ✅ 요구한 user 변수명 그대로 유지
         "age": age,
         "annual_income": annual_income,
         "assets": assets,
-        # 추가 입력도 포함(원하면 제거 가능)
         "is_homeless": is_homeless,
         "vehicle_value": vehicle_value,
         "passed": passed_policies,
@@ -287,7 +292,7 @@ if __name__ == "__main__":
         annual_income=50_000_000,
         assets=200_000_000,
         is_homeless=True,
-        vehicle_value=38_030_000,  # 예: 38,030,000원
+        vehicle_value=38_030_000,
     )
 
     print("\n=== FILTER RESULT SUMMARY ===")
