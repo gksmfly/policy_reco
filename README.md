@@ -1,162 +1,117 @@
 # 🏠 Youth Housing Policy Recommendation System
 
-서울 주거 포털 정책 데이터를 기반으로\
-사용자 조건(연령, 소득, 자산, 무주택 여부 등)에 맞는\
-주거 정책을 추천하는 AI 기반 시스템입니다.
+서울 주거 포털 정책 데이터를 기반으로  
+사용자 조건(연령, 소득, 자산, 무주택 여부 등)에 맞는  
+주거 정책을 추천하는 FastAPI + Streamlit 프로젝트입니다.
 
-------------------------------------------------------------------------
+> ✅ 현재 구현은 **DB 없이 CSV 기반(in-memory)** 으로 동작합니다.  
+> (정책/자격조건 데이터를 `pipeline/cleaner/*.csv`에서 로딩)
 
-## 📌 Overview
-
-본 프로젝트는 정책 데이터를 수집·정제·매칭하여\
-사용자 맞춤형 주거 정책을 추천하고,
-
--   조건 기반 정책 추천
--   추천 이유 자동 생성 (GPT-4o)
--   정책 Q&A (RAG 기반)
--   유사 정책 검색 (TF-IDF 기반)
-
-을 제공하는 End-to-End 시스템입니다.
-
-⚠️ 현재 구현은 **DB 없이 CSV 기반(in-memory) 구조**로 동작합니다.
-
-------------------------------------------------------------------------
+---
 
 ## 🛠 Tech Stack
 
 ### Backend
-
--   FastAPI
--   Pandas (CSV 기반 데이터 로딩)
--   Scikit-learn (TF-IDF, Cosine Similarity)
+- FastAPI
+- Pandas (CSV 로딩)
+- Scikit-learn (TF-IDF, Cosine Similarity)
 
 ### Frontend
-
--   Streamlit
+- Streamlit
 
 ### AI
+- OpenAI GPT-4o (정책 Q&A, 추천 설명)
+- LlamaIndex (RAG 구성)
 
--   OpenAI GPT-4o (설명 생성)
--   OpenAI Embedding (RAG용 벡터 검색)
+---
 
-### Dev Environment
+## 🚀 주요 기능
 
--   Python 3.11+
+### 1) 조건 기반 정책 추천
+- 사용자 프로필 기반 하드 필터 + 점수화(휴리스틱)
+- Top-K 추천 결과 + 충족/미충족 근거 리스트 반환
 
-------------------------------------------------------------------------
+### 2) 정책 Q&A (RAG)
+- 정책 텍스트(주로 `clean_text`) 기반 검색 → LLM 답변 생성
+- 대화 히스토리(history)를 함께 전달해 “이어 묻기” 지원
 
-## 🚀 Features
+### 3) 유사 정책 검색 (TF-IDF 데모)
+- `policy_name + support_summary + clean_text`로 TF-IDF 벡터화
+- cosine similarity로 Top-K 유사 정책 반환
+- **policy_id 또는 policy_name(부분일치)** 입력 지원
+- FastAPI JSON 직렬화 이슈(NaN) 방어 처리 포함
 
-### 1️⃣ 조건 기반 정책 추천 엔진
+---
 
--   사용자 프로필 기반 하드 필터링
--   소프트 스코어링 기반 Top-K 추천
--   충족/미충족 조건 근거 반환
--   GPT 기반 자연어 추천 설명 생성
+## 📂 Project Structure (현재 리포 구조 기준)
 
-------------------------------------------------------------------------
+```
+policy_reco/
+├─ backend/
+│  └─ app/
+│     ├─ main.py
+│     ├─ core/
+│     │  └─ data_manager.py
+│     ├─ routers/
+│     │  ├─ policies.py
+│     │  ├─ recommend.py
+│     │  ├─ policy_qa.py
+│     │  └─ similar.py
+│     ├─ services/
+│     │  └─ orchestration/
+│     │     ├─ recommend_flow.py
+│     │     ├─ qa_flow.py
+│     │     └─ similar_flow.py
+│     ├─ pipeline/
+│     │  ├─ rag_filter_ver3.py
+│     │  └─ rag_qa_ver2.py
+│     └─ schemas/
+│        ├─ common.py
+│        ├─ recommend.py
+│        └─ qa.py
+│
+├─ frontend/
+│  ├─ Home.py
+│  ├─ clients/
+│  │  └─ api_client.py
+│  ├─ components/
+│  │  ├─ cards.py
+│  │  ├─ forms.py
+│  │  └─ layout.py
+│  └─ pages/
+│     ├─ Recommend.py
+│     ├─ Policy_Search.py
+│     ├─ Policy_QA.py
+│     └─ Similar.py
+│
+├─ pipeline/
+│  └─ cleaner/
+│     ├─ policies.csv
+│     ├─ policy_eligibility.csv
+│     └─ rules/...
+│
+├─ data_collection/        # 크롤러/수집 관련(별도 오너 영역)
+└─ scripts/
+```
 
-### 2️⃣ 정책 Q&A (RAG 기반)
-
--   사용자 질문 입력
--   정책 텍스트 벡터 검색
--   검색된 컨텍스트 기반 GPT 응답 생성
-
-#### RAG Flow
-
-    User Question
-            ↓
-    Embedding
-            ↓
-    Top-K Context Retrieval
-            ↓
-    GPT-4o Answer
-
-------------------------------------------------------------------------
-
-### 3️⃣ 유사 정책 검색 (TF-IDF 기반)
-
--   정책명 + 요약 + clean_text 기반 TF-IDF 벡터화
--   Cosine Similarity 기반 Top-K 유사 정책 반환
--   policy_id 또는 policy_name 입력 허용
--   외부 벡터 DB 없이 CSV 기반 동작
-
-------------------------------------------------------------------------
-
-## 🏗 System Architecture
-
-    [Data Crawling]
-            ↓
-    [Data Cleaning]
-            ↓
-    [CSV Storage]
-            ↓
-    [Matching & Similar Engine]
-            ↓
-    [FastAPI]
-            ↓
-    [Streamlit UI]
-
-------------------------------------------------------------------------
-
-## 📂 Project Structure
-
-    backend/
-    │
-    ├── app/
-    │   ├── main.py
-    │   ├── routers/
-    │   │   ├── policies.py
-    │   │   ├── recommend.py
-    │   │   ├── policy_qa.py
-    │   │   └── similar.py
-    │   │
-    │   ├── services/
-    │   │   └── orchestration/
-    │   │       └── similar_flow.py
-    │   │
-    │   ├── pipeline/
-    │   │   └── rag_qa_ver2.py
-    │   │
-    │   └── core/
-    │       └── data_manager.py
-    │
-    frontend/
-    │
-    ├── Home.py
-    ├── pages/
-    │   ├── Recommend.py
-    │   ├── Policy_List.py
-    │   ├── Policy_QA.py
-    │   └── Similar.py
-    │
-    ├── components/
-    │   └── cards.py
-    │
-    └── clients/
-        └── api_client.py
-
-------------------------------------------------------------------------
+---
 
 ## 📡 API Endpoints
 
-### 🔹 GET `/health`
-
+### GET `/health`
 서버 상태 확인
 
-### 🔹 GET `/policies`
-
+### GET `/policies`
 전체 정책 목록 조회
 
-### 🔹 GET `/policies/{policy_id}`
+### GET `/policies/{policy_id}`
+정책 상세 조회
 
-특정 정책 상세 조회
+### POST `/recommend`
+조건 기반 정책 추천
 
-### 🔹 POST `/recommend`
-
-사용자 조건 기반 정책 추천
-
-``` json
+**Request 예시**
+```json
 {
   "age": 25,
   "income": 32000000,
@@ -165,67 +120,60 @@
 }
 ```
 
-### 🔹 POST `/policy-qa`
+### POST `/policy-qa`
+정책 Q&A (RAG)
 
-정책 관련 질문 응답 (RAG 기반)
-
-``` json
+**Request 예시**
+```json
 {
-  "question": "청년 전세 지원 정책 신청 조건이 뭐야?"
+  "question": "청년 전세 지원 정책 신청 조건이 뭐야?",
+  "history": [
+    {"role": "user", "content": "청년 월세 지원 알려줘"},
+    {"role": "assistant", "content": "요약 답변..."}
+  ]
 }
 ```
 
-### 🔹 GET `/similar/{policy_input}`
+### GET `/similar?policy_input=...`
+유사 정책 Top-K 반환 (TF-IDF 데모)
 
-유사 정책 Top-K 반환\
-- 숫자 입력 시 policy_id 기준\
-- 문자열 입력 시 policy_name 부분 검색
+**예시**
+- ID 기준: `/similar?policy_input=12`
+- 정책명 기준: `/similar?policy_input=전세보증금 반환보증`
 
-------------------------------------------------------------------------
+---
 
-## ⚙️ Installation & Run
+## ⚙️ 실행 방법
 
-### 1️⃣ Clone Repository
+### 1) 가상환경 & 설치
+```bash
+python -m venv .venv
+source .venv/bin/activate   # macOS / Linux
+# .venv\Scripts\activate    # Windows
 
-    git clone <repository_url>
-    cd youth-housing-policy
+pip install -r requirements.txt
+```
 
-### 2️⃣ Create Virtual Environment
+### 2) 환경변수 설정
+프로젝트 루트에 `.env` 생성:
+```bash
+OPENAI_API_KEY=your_key_here
+```
 
-    python -m venv venv
-    source venv/bin/activate   # macOS / Linux
-    venv\Scripts\activate    # Windows
+### 3) Backend 실행
+```bash
+uvicorn backend.app.main:app --reload
+```
 
-### 3️⃣ Install Dependencies
+Swagger: `http://localhost:8000/docs`
 
-    pip install -r requirements.txt
+### 4) Frontend 실행
+```bash
+streamlit run frontend/Home.py
+```
 
-### 4️⃣ Set Environment Variables
+---
 
-`.env` 파일 생성
-
-    OPENAI_API_KEY=your_key_here
-
-### 5️⃣ Run Backend
-
-    uvicorn backend.app.main:app --reload
-
-### 6️⃣ Run Frontend
-
-    streamlit run frontend/Home.py
-
-------------------------------------------------------------------------
-
-## 🧠 Design Principles
-
--   GPT는 반드시 매칭 결과 기반으로만 설명 생성
--   Hallucination 최소화를 위한 RAG 구조 적용
--   Top-K 검색 후 score 기반 정렬
--   JSON 직렬화 안전 처리 (NaN 방지)
--   현재 구현은 DB 없이 CSV 기반 메모리 로딩 구조
-
-------------------------------------------------------------------------
-
-## 📄 License
-
-This project is for academic / club project purposes only.
+## ✅ 메모
+- 현재 단계에서는 **DB/pgvector 없이 CSV 기반**으로 기능 검증이 가능하도록 구성되어 있습니다.
+- 데이터 품질(상세 설명 텍스트 정제)은 `pipeline/cleaner` 단계 품질에 따라 달라질 수 있습니다.
