@@ -1,6 +1,5 @@
 import streamlit as st
 
-
 def policy_card(policy: dict):
     """White card with blue accent + expandable detail."""
 
