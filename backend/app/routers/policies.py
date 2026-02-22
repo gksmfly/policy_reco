@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from backend.app.core.data_manager import get_dataframes
 import math
+from typing import Optional
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
@@ -23,17 +24,26 @@ def _serialize_policy(row: dict) -> dict:
         "summary": _safe(row.get("support_summary")),
         "detail": _safe(row.get("support_detail")),
         "region": _safe(row.get("region")),
-        "clean_text": _safe(row.get("clean_text")),
         "updated_at": _safe(row.get("updated_at")),
     }
 
 
+# ✅ 정책 검색 (policy_name 기준 ONLY)
 @router.get("")
-def list_policies():
+def list_policies(keyword: Optional[str] = Query(None)):
     policies_df, _ = get_dataframes()
 
-    # 1차 NaN 제거
     policies_df = policies_df.where(policies_df.notna(), None)
+
+    # 🔥 핵심: policy_name 기준 필터
+    if keyword:
+        kw = keyword.strip().lower()
+        policies_df = policies_df[
+            policies_df["policy_name"]
+            .astype(str)
+            .str.lower()
+            .str.contains(kw, na=False)
+        ]
 
     records = policies_df.to_dict(orient="records")
 

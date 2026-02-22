@@ -1,11 +1,11 @@
 from fastapi import APIRouter
-from backend.app.schemas.recommend import RecommendRequest
+from typing import Dict
+
 from backend.app.services.orchestration.recommend_flow import recommend_flow
 
-router = APIRouter(prefix="/recommend", tags=["recommend"])
+router = APIRouter(prefix="/recommend", tags=["Recommend"])
 
 
-@router.post("")
-def recommend(req: RecommendRequest):
-    results = recommend_flow(req.dict())
-    return {"results": results}
+@router.post("/")
+def recommend(profile: Dict):
+    return recommend_flow(profile)

@@ -6,9 +6,11 @@ def policy_card(policy: dict):
     title = policy.get("policy_name") or policy.get("title") or "정책명 없음"
     summary = policy.get("summary") or policy.get("support_summary") or "요약 없음"
     detail = policy.get("detail") or policy.get("clean_text")
-    score = policy.get("score") or policy.get("similarity_score")
 
-    # CSS (한 번만 적용되도록)
+    # 🔥 similarity만 사용 (score 사용 안 함)
+    similarity = policy.get("similarity")
+
+    # CSS (기존 그대로)
     st.markdown(
         """
 <style>
@@ -55,18 +57,14 @@ def policy_card(policy: dict):
     # 요약
     st.markdown(f"<p class='boaz-summary'>{summary}</p>", unsafe_allow_html=True)
 
-    # 점수 (유사도 or 추천 점수)
-    if score is not None:
-        try:
-            score_percent = round(float(score) * 100, 1)
-            st.markdown(
-                f'<div class="boaz-badge">유사도: {score_percent}%</div>',
-                unsafe_allow_html=True,
-            )
-        except:
-            pass
+    # 🔥 Similar에서만 유사도 표시
+    if similarity is not None:
+        st.markdown(
+            f'<div class="boaz-badge">유사도: {similarity}%</div>',
+            unsafe_allow_html=True,
+        )
 
-    # 상세 설명 (접기/펼치기)
+    # 상세 설명
     if detail:
         with st.expander("📄 상세 설명 보기"):
             st.write(detail)

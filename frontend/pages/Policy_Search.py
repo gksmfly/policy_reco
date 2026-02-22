@@ -1,9 +1,11 @@
+# Policy_Search.py
 import streamlit as st
 from clients.api_client import get_policies, recommend
 from components.cards import policy_card
 
 
 def render():
+
 
     st.markdown("## 🔎 정책 검색")
 

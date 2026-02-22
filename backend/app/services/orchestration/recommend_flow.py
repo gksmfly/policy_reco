@@ -3,16 +3,13 @@ from __future__ import annotations
 from typing import Any, Dict, List
 import os
 import pandas as pd
+import numpy as np
 
 from backend.app.core.data_manager import get_dataframes, get_csv_paths
 from backend.app.pipeline.rag_filter_ver3 import filter_policies_from_csv
 
 
 def _safe(value):
-    """
-    pandas NaN / numpy.nan → None 변환
-    JSON 직렬화 안전 처리
-    """
     if value is None:
         return None
     try:
@@ -24,11 +21,6 @@ def _safe(value):
 
 
 def _resolve_eligibility_path() -> str:
-    """
-    1) .env 의 POLICY_ELIGIBILITY_CSV_PATH 우선 사용
-    2) 없으면 get_csv_paths()[1] 사용
-    3) 상대경로면 프로젝트 루트 기준 절대경로로 변환
-    """
     env_path = os.getenv("POLICY_ELIGIBILITY_CSV_PATH")
 
     if env_path:
@@ -36,35 +28,40 @@ def _resolve_eligibility_path() -> str:
     else:
         path = get_csv_paths()[1]
 
-    # 절대경로 변환
     if not os.path.isabs(path):
-        base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../../../../")
-        )
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../"))
         path = os.path.join(base_dir, path)
 
     return path
 
-def recommend_flow(profile: Dict[str, Any], top_k: int = 5) -> List[Dict[str, Any]]:
-    """
-    CSV 기반 추천:
-    - policy_eligibility.csv 로 하드 필터
-    - policies.csv 에서 정책 메타정보 붙임
-    - 점수는 통과 조건 개수 기반 휴리스틱
-    """
 
+def _normalize_pid(pid) -> str | None:
+    """
+    policy_id가 '101', 101, 101.0, '101 ' 등으로 섞여와도
+    동일 정책으로 인식하도록 정규화
+    """
+    if pid is None:
+        return None
+    try:
+        s = str(pid).strip()
+        if s == "":
+            return None
+        # '101.0' 같은 경우도 int로 정규화
+        return str(int(float(s)))
+    except Exception:
+        return None
+
+
+def recommend_flow(profile: Dict[str, Any], top_k: int = 5) -> Dict[str, Any]:
     policies_df, _ = get_dataframes()
 
-    # ===== 프론트 기준 필드 =====
     age = int(profile.get("age") or 0)
     annual_income = profile.get("income")
     assets = profile.get("assets")
     is_homeless = profile.get("is_homeless")
 
-    # ===== eligibility CSV 경로 결정 =====
     eligibility_path = _resolve_eligibility_path()
 
-    # ===== 하드 필터 실행 =====
     result = filter_policies_from_csv(
         eligibility_path,
         age=age,
@@ -74,46 +71,53 @@ def recommend_flow(profile: Dict[str, Any], top_k: int = 5) -> List[Dict[str, An
         vehicle_value=None,
     )
 
-    passed = result.get("passed", [])
+    passed = result.get("passed", []) or []
 
-    # ===== NaN 제거한 metadata lookup 생성 =====
+    # ✅ 1) passed 단계에서 policy_id 정규화 + 중복 제거
+    unique_passed_by_pid: Dict[str, Dict[str, Any]] = {}
+    for p in passed:
+        pid_norm = _normalize_pid(p.get("policy_id"))
+        if pid_norm is None:
+            continue
+        if pid_norm not in unique_passed_by_pid:
+            unique_passed_by_pid[pid_norm] = p
+
+    passed = list(unique_passed_by_pid.values())
+
+    # 정책 메타데이터 lookup (policy_id 정규화해서 키 맞추기)
     clean_df = policies_df.copy()
     clean_df = clean_df.replace({pd.NA: None})
     clean_df = clean_df.where(pd.notnull(clean_df), None)
 
-    lookup = {
-        int(r["policy_id"]): r
-        for r in clean_df.to_dict(orient="records")
-        if r.get("policy_id") is not None
-    }
+    lookup: Dict[str, Dict[str, Any]] = {}
+    for r in clean_df.to_dict(orient="records"):
+        pid_norm = _normalize_pid(r.get("policy_id"))
+        if pid_norm is None:
+            continue
+        if pid_norm not in lookup:
+            lookup[pid_norm] = r
 
     items: List[Dict[str, Any]] = []
 
-    # ===== 추천 결과 구성 =====
     for p in passed:
-        pid = p.get("policy_id")
-
-        try:
-            pid_int = int(pid)
-        except Exception:
+        pid_norm = _normalize_pid(p.get("policy_id"))
+        if pid_norm is None:
             continue
 
-        meta = lookup.get(pid_int, {})
-        explain = p.get("explain", {})
+        meta = lookup.get(pid_norm, {})
+        explain = p.get("explain", {}) or {}
 
         matched = explain.get("passed", []) or []
         skipped = explain.get("skipped", []) or []
         failed = explain.get("failed", []) or []
 
-        # 점수 계산
         score = float(80 + 5 * len(matched) - 2 * len(skipped))
-
-        if pd.isna(score):
+        if pd.isna(score) or np.isinf(score):
             score = 0.0
 
         items.append(
             {
-                "policy_id": str(pid_int),
+                "policy_id": pid_norm,
                 "policy_name": _safe(meta.get("policy_name")),
                 "score": score,
                 "matched_conditions": matched,
@@ -124,12 +128,30 @@ def recommend_flow(profile: Dict[str, Any], top_k: int = 5) -> List[Dict[str, An
             }
         )
 
-    # ===== 정렬 + top_k =====
+    # ✅ 2) 화면상 “동일 정책명 반복” 방지: policy_name 기준 2차 중복 제거
+    # (정책명이 아예 같으면 하나만 남김. 점수가 높은 것 우선)
     items.sort(key=lambda x: x.get("score", 0), reverse=True)
-    items = items[:top_k]
 
-    # ===== rank 부여 =====
+    deduped: List[Dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for it in items:
+        name = (it.get("policy_name") or "").strip()
+        # 이름이 비어있으면 id 기준으로만
+        if name:
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+        deduped.append(it)
+
+    items = deduped[:top_k]
+
     for i, it in enumerate(items, start=1):
         it["rank"] = i
 
-    return items
+    # JSON 안전 처리
+    for it in items:
+        for k, v in it.items():
+            if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
+                it[k] = None
+
+    return {"results": items}
