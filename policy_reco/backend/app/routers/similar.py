@@ -3,7 +3,7 @@ from backend.app.services.orchestration.similar_flow import similar_flow
 
 router = APIRouter(prefix="/similar", tags=["similar"])
 
-
-@router.get("")
-def similar(policy_input: str):
-    return {"results": similar_flow(policy_input)}
+@router.get("/{policy_id}")
+def similar(policy_id: str):
+    results = similar_flow(policy_id)
+    return {"results": results}

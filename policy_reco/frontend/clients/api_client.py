@@ -39,14 +39,9 @@ def policy_qa(payload):
         return {"error": str(e)}
 
 
-# 🔥 수정된 부분
-def similar(policy_input: str):
+def similar(policy_id):
     try:
-        r = requests.get(
-            f"{BASE_URL}/similar",
-            params={"policy_input": policy_input},  # ← query 방식으로 수정
-            timeout=10,
-        )
+        r = requests.get(f"{BASE_URL}/similar/{policy_id}", timeout=10)
         r.raise_for_status()
         return r.json()
     except Exception as e:

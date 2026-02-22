@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Dict, List
-
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -9,40 +8,54 @@ from sklearn.metrics.pairwise import cosine_similarity
 from backend.app.core.data_manager import get_dataframes
 
 
-def similar_flow(policy_id: str, top_k: int = 5) -> List[Dict]:
-    """
-    CSV 기반 유사 정책:
-    - clean_text + policy_name 기반 TF-IDF 코사인 유사도
-    - 외부 벡터DB/pgvector 없이 동작(데모용)
-    """
+def _safe_value(v):
+    """JSON 직렬화 안전 처리"""
+    if v is None:
+        return None
+    if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
+        return 0.0
+    return v
+
+
+def similar_flow(policy_input: str, top_k: int = 5) -> List[Dict]:
+
     policies_df, _ = get_dataframes()
-    df = policies_df.where(policies_df.notna(), None).copy()
+    df = policies_df.copy()
 
-    # policy_id 정규화
-    try:
-        target_id = int(policy_id)
-    except Exception:
-        return []
-
-    if "policy_id" not in df.columns:
+    if df.empty or "policy_id" not in df.columns:
         return []
 
     df = df[df["policy_id"].notna()].copy()
-    ids = df["policy_id"].astype(int).tolist()
+    df["policy_id"] = df["policy_id"].astype(int)
 
-    if target_id not in ids:
-        return []
+    # -----------------------------
+    # 입력 처리
+    # -----------------------------
+    if policy_input.isdigit():
+        target_id = int(policy_input)
+        if target_id not in df["policy_id"].tolist():
+            return []
+    else:
+        match = df[df["policy_name"] == policy_input]
+        if match.empty:
+            return []
+        target_id = int(match.iloc[0]["policy_id"])
 
+    # -----------------------------
     # 텍스트 구성
+    # -----------------------------
     def _row_text(r):
-        parts = [
-            str(r.get("policy_name") or ""),
-            str(r.get("support_summary") or ""),
-            str(r.get("clean_text") or ""),
-        ]
-        return "\n".join([p for p in parts if p])
+        return "\n".join(
+            [
+                str(r.get("policy_name") or ""),
+                str(r.get("support_summary") or ""),
+                str(r.get("clean_text") or ""),
+            ]
+        )
 
-    texts = [_row_text(r) for r in df.to_dict(orient="records")]
+    records = df.to_dict(orient="records")
+    texts = [_row_text(r) for r in records]
+    ids = [int(r["policy_id"]) for r in records]
 
     vec = TfidfVectorizer(max_features=20000)
     X = vec.fit_transform(texts)
@@ -50,24 +63,31 @@ def similar_flow(policy_id: str, top_k: int = 5) -> List[Dict]:
     target_idx = ids.index(target_id)
     sims = cosine_similarity(X[target_idx], X).flatten()
 
-    # 상위 top_k + 자기 자신 제외
+    # 🔥 NaN / inf 제거
+    sims = np.nan_to_num(sims, nan=0.0, posinf=0.0, neginf=0.0)
+
     ranked_idx = np.argsort(-sims)
+
     out = []
+
     for idx in ranked_idx:
         pid = ids[idx]
         if pid == target_id:
             continue
-        r = df.iloc[idx].to_dict()
+
+        r = records[idx]
+
         out.append(
             {
                 "policy_id": str(pid),
-                "policy_name": r.get("policy_name"),
-                "similarity_score": float(sims[idx]),
-                "summary": r.get("support_summary"),
-                "detail": r.get("support_detail"),
-                "region": r.get("region"),
+                "policy_name": _safe_value(r.get("policy_name")),
+                "similarity_score": float(_safe_value(sims[idx])),
+                "summary": _safe_value(r.get("support_summary")),
+                "detail": _safe_value(r.get("support_detail")),
+                "region": _safe_value(r.get("region")),
             }
         )
+
         if len(out) >= top_k:
             break
 
