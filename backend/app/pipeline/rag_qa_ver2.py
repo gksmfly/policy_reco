@@ -1,157 +1,77 @@
-import os
-import pandas as pd
-
-from openai import OpenAI
-
-from llama_index.core import Document, VectorStoreIndex
-from llama_index.embeddings.openai import OpenAIEmbedding
-
-'''
-1. 10 line : CSV_PATH
-승훈님의 전처리 데이터(policies.csv, policy_eligibility.csv) 와 연결하는 상대경로 
-'''
-
-CSV_PATH = os.path.join(os.getcwd(), "../../../pipeline/cleaner/", "policies.csv")
-
-EMBED_MODEL_NAME = "text-embedding-3-small"
-GEN_MODEL_NAME = "gpt-4o"
-
-
-def load_documents(csv_path: str) -> list[Document]:
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"CSV 파일을 찾을 수 없습니다: {csv_path}")
-
-    df = pd.read_csv(csv_path, encoding="cp949")
-
-    # policies csv 구성 컬럼: policy_id, policy_name, support_summary, support_detail, clean_text
-    if "policy_id" not in df.columns or "clean_text" not in df.columns:
-        raise ValueError("CSV에는 최소 'policy_id', 'clean_text' 컬럼이 필요합니다.")
-
-    docs: list[Document] = []
-    for _, row in df.iterrows():
-        text = str(row["clean_text"])
-        doc_id = int(row["policy_id"])
-        docs.append(
-            Document(
-                text=text,
-                metadata={"doc_id": doc_id},
-            )
-        )
-    return docs
-
-
-def build_index(documents: list[Document]) -> VectorStoreIndex:
-    embed_model = OpenAIEmbedding(model=EMBED_MODEL_NAME)
-    return VectorStoreIndex.from_documents(documents, embed_model=embed_model)
-
-
-def retrieve(index: VectorStoreIndex, query: str, top_k: int = 5):
-    retriever = index.as_retriever(top_k=top_k, verbose=True)
-    results = retriever.retrieve(query)
-
-    hits = []
-    for rank, r in enumerate(results, start=1):
-        hits.append(
-            {
-                "rank": rank,
-                "doc_id": r.metadata.get("doc_id"),
-                "score": float(r.score) if r.score is not None else None,
-                "text": r.text,
-            }
-        )
-    return hits
-
-
-def generate_answer(query: str, hits: list[dict]) -> str:
-    client = OpenAI()
-
-    # 컨텍스트 구성 (A 플랜: 정책 후보 검색이 목적이라, 텍스트 덩어리 그대로 넣음)
-    context_lines = []
-    for h in hits:
-        # 너무 길면 비용/토큰이 커질 수 있어 간단히 컷(필요시 조절)
-        snippet = h["text"][:1500]
-        context_lines.append(
-            f"[{h['rank']}] (doc_id={h['doc_id']}, score={h['score']})\n{snippet}"
-        )
-
-    context = "\n\n".join(context_lines)
-
-    prompt = f"""
-너는 주거/복지 정책 안내 도우미야.
-아래 [검색결과]만 근거로 사용해서 답해. 근거 밖 추측은 하지 마.
-가능하면 답변 끝에 참고한 doc_id를 함께 적어줘.
-
-[검색결과]
-{context}
-
-[질문]
-{query}
-
-[답변]
-""".strip()
-
-    resp = client.responses.create(
-        model=GEN_MODEL_NAME,
-        input=prompt,
-    )
-    return resp.output_text
-
-
-def main():
-    print("Loading documents...")
-    documents = load_documents(CSV_PATH)
-
-    print("Building index with OpenAI embeddings...")
-    index = build_index(documents)
-
-    while True:
-        query = input("\n질문을 입력하세요 (종료: 엔터만 입력): ").strip()
-        if not query:
-            break
-
-        hits = retrieve(index, query, top_k=5)
-
-        print("\n[Top-5 Retrieval 결과 요약]")
-        for h in hits:
-            print(f"- rank={h['rank']}, doc_id={h['doc_id']}, score={h['score']}")
-
-        answer = generate_answer(query, hits)
-        print("\n[GPT-4o 답변]")
-        print(answer)
-
-
-if __name__ == "__main__":
-    main()
-
-# === FastAPI에서 쓸 함수 ===
+from __future__ import annotations
 
 from functools import lru_cache
+from typing import List
+import os
 
+from dotenv import load_dotenv
+from llama_index.core import Document, VectorStoreIndex, Settings
+from llama_index.llms.openai import OpenAI
+from llama_index.embeddings.openai import OpenAIEmbedding
+
+from backend.app.core.data_manager import get_dataframes
+
+# .env 로드
+load_dotenv()
+
+# -----------------------------
+# RAG 엔진 로드 (서버 시작 시 1회)
+# -----------------------------
 @lru_cache(maxsize=1)
 def load_rag_engine():
     """
-    서버 시작 시 1회만 CSV 로드 + 인덱스 생성
+    - policies.csv 로드
+    - clean_text 기반 문서 생성
+    - OpenAI 임베딩 + GPT-4o LLM 사용
     """
-    import pandas as pd
-    from llama_index.core import VectorStoreIndex, Document
-    from llama_index.llms.openai import OpenAI
 
-    df = pd.read_csv("pipeline/cleaner/policies.csv")
+    # 🔥 API 키 확인 (디버깅용)
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY가 설정되어 있지 않습니다.")
 
-    documents = []
-    for _, row in df.iterrows():
-        text = row.get("clean_text", "")
+    policies_df, _ = get_dataframes()
+
+    documents: List[Document] = []
+
+    for _, row in policies_df.iterrows():
+        text = row.get("clean_text")
+
+        if not isinstance(text, str):
+            continue
+
+        text = text.strip()
         if not text:
             continue
+
         documents.append(Document(text=text))
 
+    if not documents:
+        raise RuntimeError("RAG용 문서가 비어 있습니다.")
+
+    # -----------------------------
+    # 명시적으로 OpenAI 설정
+    # -----------------------------
+    Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small")
+    Settings.llm = OpenAI(model="gpt-4o")
+    
     index = VectorStoreIndex.from_documents(documents)
-    query_engine = index.as_query_engine(llm=OpenAI(model="gpt-4o"))
+    
+    chat_engine = index.as_chat_engine(
+        llm=OpenAI(model="gpt-4o"),
+        chat_mode="context",
+        verbose=True
+    )
+    
+    return chat_engine
 
-    return query_engine
-
-
+# -----------------------------
+# 질문 처리
+# -----------------------------
 def ask_policy_question(question: str) -> str:
+    if not question or not question.strip():
+        return "질문을 입력해주세요."
+
     engine = load_rag_engine()
     response = engine.query(question)
+
     return str(response)

@@ -19,7 +19,7 @@ def profile_form():
         return {
             "age": int(age),
             "income": int(monthly_income) * 10000,  # (만원 → 원) 변환이 필요 없으면 이 줄 제거
-            "asset": int(total_asset) * 10000,     # (만원 → 원)
+            "assets": int(total_asset) * 10000,     # (만원 → 원)
             "is_homeless": bool(is_homeless),
         }
 

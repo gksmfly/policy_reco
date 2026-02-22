@@ -1,14 +1,12 @@
 fastapi
 uvicorn
-sqlalchemy
 psycopg2-binary
-pgvector
 python-dotenv
 openai>=1.0.0
 streamlit
+scikit-learn
 
 pandas
 tiktoken
 
 llama-index==0.10.30
-llama-index-llms-openai==0.1.7
