@@ -1,15 +1,15 @@
-# 🏠 Youth Housing Policy Recommendation System
+# Youth Housing Policy Recommendation System
 
 서울 주거 포털 정책 데이터를 기반으로  
 사용자 조건(연령, 소득, 자산, 무주택 여부 등)에 맞는  
 주거 정책을 추천하는 FastAPI + Streamlit 프로젝트입니다.
 
-> ✅ 현재 구현은 **DB 없이 CSV 기반(in-memory)** 으로 동작합니다.  
+> 현재 구현은 **DB 없이 CSV 기반(in-memory)** 으로 동작합니다.  
 > (정책/자격조건 데이터를 `pipeline/cleaner/*.csv`에서 로딩)
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 ### Backend
 - FastAPI
@@ -25,7 +25,7 @@
 
 ---
 
-## 🚀 주요 기능
+## 주요 기능
 
 ### 1) 조건 기반 정책 추천
 - 사용자 프로필 기반 하드 필터 + 점수화(휴리스틱)
@@ -43,7 +43,7 @@
 
 ---
 
-## 📂 Project Structure (현재 리포 구조 기준)
+## Project Structure (현재 리포 구조 기준)
 
 ```
 policy_reco
@@ -129,7 +129,7 @@ policy_reco
 
 ---
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### GET `/health`
 서버 상태 확인
@@ -176,7 +176,7 @@ policy_reco
 
 ---
 
-## ⚙️ 실행 방법
+## 실행 방법
 
 ### 1) 가상환경 & 설치
 ```bash
@@ -207,6 +207,6 @@ streamlit run frontend/Home.py
 
 ---
 
-## ✅ 메모
+## 메모
 - 현재 단계에서는 **DB/pgvector 없이 CSV 기반**으로 기능 검증이 가능하도록 구성되어 있습니다.
 - 데이터 품질(상세 설명 텍스트 정제)은 `pipeline/cleaner` 단계 품질에 따라 달라질 수 있습니다.
